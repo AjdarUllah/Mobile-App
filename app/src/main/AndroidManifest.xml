@@ -6,10 +6,11 @@
         android:required="false" />
 
     <application
-        android:allowBackup="true"
         android:label="MAG Recorder"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="false">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".RecorderActivity"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
