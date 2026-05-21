@@ -29,9 +29,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
@@ -40,12 +44,11 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final int MAX_PLOT_POINTS = 900;
-    private static final int REQUESTED_SAMPLE_PERIOD_US = 5_000; // best effort ~200 Hz; actual rate is device-dependent.
+    private static final int MAX_PLOT_POINTS = 700;
+    private static final int REQUESTED_SAMPLE_PERIOD_US = 10_000; // best effort ~100 Hz; actual rate is saved.
+    private static final String APP_VERSION = "0.1.1";
 
     private SensorManager sensorManager;
-    private Sensor magnetometer;
-    private Sensor uncalibratedMagnetometer;
     private Sensor activeSensor;
 
     private TextView statusText;
@@ -69,30 +72,57 @@ public class MainActivity extends Activity implements SensorEventListener {
     private float latestBy = Float.NaN;
     private float latestBz = Float.NaN;
     private float latestMagnitude = Float.NaN;
-    private int droppedForPlot = 0;
 
     private final Runnable uiTicker = new Runnable() {
         @Override
         public void run() {
-            updateReadout();
-            uiHandler.postDelayed(this, 250);
+            try {
+                updateReadout();
+            } catch (Throwable ignored) {
+                // Never let a UI refresh kill the recorder.
+            }
+            uiHandler.postDelayed(this, 500);
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread thread, Throwable throwable) {
+                try {
+                    writeCrashFile(throwable);
+                } catch (Throwable ignored) {
+                }
+                System.exit(2);
+            }
+        });
+        try {
+            initialiseApp();
+        } catch (Throwable t) {
+            showFallbackUi(t);
+        }
+    }
+
+    private void initialiseApp() {
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        uncalibratedMagnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED);
-        activeSensor = magnetometer != null ? magnetometer : uncalibratedMagnetometer;
+        activeSensor = chooseMagnetometer(sensorManager);
         buildUi();
         describeSensor();
+    }
+
+    private Sensor chooseMagnetometer(SensorManager manager) {
+        if (manager == null) return null;
+        Sensor calibrated = manager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        if (calibrated != null) return calibrated;
+        return manager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        uiHandler.removeCallbacks(uiTicker);
         uiHandler.post(uiTicker);
     }
 
@@ -100,7 +130,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     protected void onPause() {
         super.onPause();
         uiHandler.removeCallbacks(uiTicker);
-        if (!recording) {
+        if (!recording && sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
     }
@@ -110,7 +140,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(16), dp(16), dp(24));
-        scroll.addView(root);
+        scroll.addView(root, new ScrollView.LayoutParams(ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
         title.setText("MAG Recorder");
@@ -120,7 +150,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         root.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Phone magnetometer logger for Bx, By, Bz and |B| with phyphox-style CSV + JSON metadata export.");
+        subtitle.setText("Records phone magnetometer Bx, By, Bz and |B| with CSV + JSON metadata export.");
         subtitle.setTextSize(14f);
         subtitle.setTextColor(Color.rgb(75, 85, 99));
         subtitle.setPadding(0, dp(4), 0, dp(12));
@@ -141,6 +171,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+
         startButton = new Button(this);
         startButton.setText("Start");
         stopButton = new Button(this);
@@ -149,6 +180,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         exportButton = new Button(this);
         exportButton.setText("Export");
         exportButton.setEnabled(false);
+
         row.addView(startButton, weighted());
         row.addView(stopButton, weighted());
         row.addView(exportButton, weighted());
@@ -164,10 +196,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         valueText.setTextSize(16f);
         valueText.setTextColor(Color.rgb(17, 24, 39));
         valueText.setPadding(0, dp(4), 0, dp(8));
+        valueText.setText("Bx --   By --   Bz --   |B| --");
         root.addView(valueText, matchWrap());
 
         plotView = new MagPlotView(this);
-        root.addView(plotView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(320)));
+        root.addView(plotView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(300)));
 
         metaText = new TextView(this);
         metaText.setTextSize(12f);
@@ -177,33 +210,75 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         setContentView(scroll);
 
-        startButton.setOnClickListener(v -> startRecording());
-        stopButton.setOnClickListener(v -> stopRecording());
-        exportButton.setOnClickListener(v -> exportSession());
+        startButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startRecording();
+            }
+        });
+        stopButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                stopRecording();
+            }
+        });
+        exportButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                exportSession();
+            }
+        });
+    }
+
+    private void showFallbackUi(Throwable t) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dpSafe(16), dpSafe(16), dpSafe(16), dpSafe(16));
+        TextView title = new TextView(this);
+        title.setText("MAG Recorder could not start");
+        title.setTextSize(22f);
+        title.setTextColor(Color.rgb(185, 28, 28));
+        root.addView(title);
+        TextView details = new TextView(this);
+        details.setText(stackTrace(t));
+        details.setTextSize(12f);
+        details.setTextColor(Color.rgb(31, 41, 55));
+        root.addView(details);
+        setContentView(root);
+        try {
+            writeCrashFile(t);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void describeSensor() {
         if (activeSensor == null) {
-            statusText.setText("No magnetometer found on this phone.");
+            statusText.setText("No magnetometer sensor was detected on this phone.");
             startButton.setEnabled(false);
+            metaText.setText("Sensor unavailable. Try a phone with a compass/magnetometer sensor.");
             return;
         }
         String type = activeSensor.getType() == Sensor.TYPE_MAGNETIC_FIELD ? "calibrated" : "uncalibrated";
-        String text = "Sensor: " + activeSensor.getName() + " (" + type + ")\n"
-                + "Vendor: " + activeSensor.getVendor() + " | Resolution: " + activeSensor.getResolution() + " µT | Max: " + activeSensor.getMaximumRange() + " µT\n"
-                + "Requested period: " + REQUESTED_SAMPLE_PERIOD_US + " µs; actual timestamps are saved per sample.";
+        String text = "Sensor: " + safe(activeSensor.getName()) + " (" + type + ")\n"
+                + "Vendor: " + safe(activeSensor.getVendor())
+                + " | Resolution: " + activeSensor.getResolution() + " µT"
+                + " | Max: " + activeSensor.getMaximumRange() + " µT\n"
+                + "Requested period: " + REQUESTED_SAMPLE_PERIOD_US + " µs; actual timestamps are saved per sample.\n"
+                + "App version: " + APP_VERSION;
         metaText.setText(text);
-        statusText.setText("Ready. Place phone consistently; avoid metal objects, speakers and magnetic cases.");
+        statusText.setText("Ready. Keep phone position fixed and away from magnetic cases, speakers, laptops and metal objects.");
     }
 
     private void startRecording() {
-        if (activeSensor == null) return;
+        if (activeSensor == null || sensorManager == null) {
+            Toast.makeText(this, "No magnetometer available", Toast.LENGTH_LONG).show();
+            return;
+        }
         samples.clear();
         plotView.clear();
         firstSensorTimestampNs = -1L;
         firstWallClockMs = System.currentTimeMillis();
         lastSensorTimestampNs = -1L;
-        droppedForPlot = 0;
         recording = true;
         startButton.setEnabled(false);
         stopButton.setEnabled(true);
@@ -211,7 +286,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         subjectInput.setEnabled(false);
         noteInput.setEnabled(false);
         sensorManager.unregisterListener(this);
-        boolean ok = sensorManager.registerListener(this, activeSensor, REQUESTED_SAMPLE_PERIOD_US, 0);
+        boolean ok = sensorManager.registerListener(this, activeSensor, REQUESTED_SAMPLE_PERIOD_US);
         if (!ok) {
             recording = false;
             startButton.setEnabled(true);
@@ -226,42 +301,44 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void stopRecording() {
         recording = false;
-        sensorManager.unregisterListener(this);
+        if (sensorManager != null) sensorManager.unregisterListener(this);
         startButton.setEnabled(true);
         stopButton.setEnabled(false);
         exportButton.setEnabled(!samples.isEmpty());
         subjectInput.setEnabled(true);
         noteInput.setEnabled(true);
-        statusText.setText("Stopped. Samples: " + samples.size() + ". Export CSV + JSON metadata when ready.");
+        statusText.setText("Stopped. Samples: " + samples.size() + ". Press Export to save CSV + JSON metadata.");
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() != Sensor.TYPE_MAGNETIC_FIELD && event.sensor.getType() != Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) {
-            return;
-        }
-        long ts = event.timestamp;
-        if (firstSensorTimestampNs < 0) firstSensorTimestampNs = ts;
-        double tSec = (ts - firstSensorTimestampNs) / 1_000_000_000.0;
-        float bx = event.values.length > 0 ? event.values[0] : Float.NaN;
-        float by = event.values.length > 1 ? event.values[1] : Float.NaN;
-        float bz = event.values.length > 2 ? event.values[2] : Float.NaN;
-        float bAbs = (float) Math.sqrt(bx * bx + by * by + bz * bz);
-        float biasX = event.values.length > 3 ? event.values[3] : Float.NaN;
-        float biasY = event.values.length > 4 ? event.values[4] : Float.NaN;
-        float biasZ = event.values.length > 5 ? event.values[5] : Float.NaN;
-        double dtMs = lastSensorTimestampNs > 0 ? (ts - lastSensorTimestampNs) / 1_000_000.0 : Double.NaN;
-        lastSensorTimestampNs = ts;
+        try {
+            if (event == null || event.sensor == null || event.values == null) return;
+            int type = event.sensor.getType();
+            if (type != Sensor.TYPE_MAGNETIC_FIELD && type != Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) return;
 
-        latestBx = bx;
-        latestBy = by;
-        latestBz = bz;
-        latestMagnitude = bAbs;
-        if (recording) {
-            samples.add(new MagSample(tSec, ts, bx, by, bz, bAbs, biasX, biasY, biasZ, accuracy, dtMs));
+            long ts = event.timestamp;
+            if (firstSensorTimestampNs < 0) firstSensorTimestampNs = ts;
+            double tSec = (ts - firstSensorTimestampNs) / 1_000_000_000.0;
+            float bx = event.values.length > 0 ? event.values[0] : Float.NaN;
+            float by = event.values.length > 1 ? event.values[1] : Float.NaN;
+            float bz = event.values.length > 2 ? event.values[2] : Float.NaN;
+            float bAbs = (float) Math.sqrt(bx * bx + by * by + bz * bz);
+            float biasX = event.values.length > 3 ? event.values[3] : Float.NaN;
+            float biasY = event.values.length > 4 ? event.values[4] : Float.NaN;
+            float biasZ = event.values.length > 5 ? event.values[5] : Float.NaN;
+            double dtMs = lastSensorTimestampNs > 0 ? (ts - lastSensorTimestampNs) / 1_000_000.0 : Double.NaN;
+            lastSensorTimestampNs = ts;
+
+            latestBx = bx;
+            latestBy = by;
+            latestBz = bz;
+            latestMagnitude = bAbs;
+            if (recording) samples.add(new MagSample(tSec, ts, bx, by, bz, bAbs, biasX, biasY, biasZ, accuracy, dtMs));
+            plotView.add(tSec, bx, by, bz, bAbs);
+        } catch (Throwable t) {
+            statusText.setText("Sensor callback error: " + t.getClass().getSimpleName());
         }
-        plotView.add(tSec, bx, by, bz, bAbs);
-        if (plotView.getPointCount() > MAX_PLOT_POINTS) droppedForPlot++;
     }
 
     @Override
@@ -277,9 +354,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         valueText.setText(String.format(Locale.US,
                 "Bx %.3f µT   By %.3f µT   Bz %.3f µT   |B| %.3f µT\nSamples %d   Duration %.1f s   Estimated fs %.1f Hz   Accuracy %s",
                 latestBx, latestBy, latestBz, latestMagnitude, n, duration, fs, accuracyLabel(accuracy)));
-        if (recording) {
-            statusText.setText("Recording... keep phone orientation/position fixed. Plot shows recent samples only; export keeps all samples.");
-        }
+        if (recording) statusText.setText("Recording... recent samples are plotted; export keeps all samples.");
     }
 
     private void exportSession() {
@@ -295,13 +370,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             writeTextToDownloads(base + ".csv", "text/csv", buildCsv());
             writeTextToDownloads(base + "_metadata.json", "application/json", buildMetadataJson(base));
             Toast.makeText(this, "Exported to Downloads/MAG_Recorder", Toast.LENGTH_LONG).show();
-        } catch (IOException e) {
+        } catch (Throwable e) {
             Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
     private String buildCsv() {
-        StringBuilder sb = new StringBuilder(samples.size() * 96);
+        StringBuilder sb = new StringBuilder(Math.max(4096, samples.size() * 96));
         sb.append("time_s,sensor_timestamp_ns,system_start_unix_ms,Bx_uT,By_uT,Bz_uT,B_abs_uT,bias_x_uT,bias_y_uT,bias_z_uT,accuracy,dt_ms\n");
         for (MagSample s : samples) {
             sb.append(String.format(Locale.US,
@@ -320,7 +395,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         return "{\n"
                 + kv("file_base", baseName, true)
                 + kv("app", "MAG Recorder", true)
-                + kv("app_version", "0.1.0", true)
+                + kv("app_version", APP_VERSION, true)
                 + kv("subject_or_session", subjectInput.getText().toString().trim(), true)
                 + kv("notes", noteInput.getText().toString().trim(), true)
                 + kv("start_time_utc", startIso, true)
@@ -328,8 +403,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 + kv("device_model", Build.MODEL, true)
                 + kv("android_version", Build.VERSION.RELEASE, true)
                 + kv("sensor_type", activeSensor == null ? "none" : sensorTypeName(activeSensor), true)
-                + kv("sensor_name", activeSensor == null ? "none" : activeSensor.getName(), true)
-                + kv("sensor_vendor", activeSensor == null ? "none" : activeSensor.getVendor(), true)
+                + kv("sensor_name", activeSensor == null ? "none" : safe(activeSensor.getName()), true)
+                + kv("sensor_vendor", activeSensor == null ? "none" : safe(activeSensor.getVendor()), true)
                 + kv("sensor_resolution_uT", activeSensor == null ? Double.NaN : activeSensor.getResolution(), true)
                 + kv("sensor_maximum_range_uT", activeSensor == null ? Double.NaN : activeSensor.getMaximumRange(), true)
                 + kv("requested_sample_period_us", REQUESTED_SAMPLE_PERIOD_US, true)
@@ -338,6 +413,48 @@ public class MainActivity extends Activity implements SensorEventListener {
                 + kv("estimated_sampling_rate_hz", fs, true)
                 + kv("columns", "time_s,sensor_timestamp_ns,system_start_unix_ms,Bx_uT,By_uT,Bz_uT,B_abs_uT,bias_x_uT,bias_y_uT,bias_z_uT,accuracy,dt_ms", false)
                 + "}\n";
+    }
+
+    private void writeTextToDownloads(String fileName, String mime, String text) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentResolver resolver = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MAG_Recorder");
+            Uri uri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
+            if (uri == null) throw new IOException("Could not create export file");
+            OutputStream out = resolver.openOutputStream(uri);
+            if (out == null) throw new IOException("Could not open export stream");
+            writeAll(out, text);
+        } else {
+            File dir = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "MAG_Recorder");
+            if (!dir.exists() && !dir.mkdirs()) throw new IOException("Could not create export directory");
+            File file = new File(dir, fileName);
+            writeAll(new FileOutputStream(file), text);
+        }
+    }
+
+    private void writeAll(OutputStream out, String text) throws IOException {
+        try (OutputStream stream = out;
+             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
+            writer.write(text);
+        }
+    }
+
+    private void writeCrashFile(Throwable t) throws IOException {
+        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        if (dir == null) dir = getFilesDir();
+        File file = new File(dir, "mag_recorder_crash.txt");
+        writeAll(new FileOutputStream(file), stackTrace(t));
+    }
+
+    private static String stackTrace(Throwable t) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        t.printStackTrace(pw);
+        pw.flush();
+        return sw.toString();
     }
 
     private String kv(String key, String value, boolean comma) {
@@ -353,29 +470,18 @@ public class MainActivity extends Activity implements SensorEventListener {
         return "  \"" + escape(key) + "\": " + value + (comma ? "," : "") + "\n";
     }
 
-    private void writeTextToDownloads(String fileName, String mime, String text) throws IOException {
-        ContentResolver resolver = getContentResolver();
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MAG_Recorder");
-        }
-        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (uri == null) throw new IOException("Could not create export file");
-        try (OutputStream out = resolver.openOutputStream(uri);
-             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8))) {
-            writer.write(text);
-        }
-    }
-
     private static String sanitize(String s) {
+        if (s == null) return "";
         return s.replaceAll("[^A-Za-z0-9_.-]+", "_").replaceAll("_+", "_");
     }
 
     private static String escape(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static String safe(String s) {
+        return s == null ? "" : s;
     }
 
     private static String iso(long unixMs) {
@@ -414,6 +520,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private int dpSafe(int v) {
+        try {
+            return dp(v);
+        } catch (Throwable t) {
+            return v * 2;
+        }
+    }
+
     private static class MagSample {
         final double timeSec;
         final long sensorTimestampNs;
@@ -438,7 +552,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     public static class MagPlotView extends View {
         private final ArrayDeque<float[]> points = new ArrayDeque<>();
-        private final Paint axisPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint xPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -448,17 +562,22 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         public MagPlotView(Context context) {
             super(context);
-            axisPaint.setColor(Color.rgb(31, 41, 55));
-            axisPaint.setStrokeWidth(2f);
+            borderPaint.setColor(Color.rgb(31, 41, 55));
+            borderPaint.setStrokeWidth(2f);
+            borderPaint.setStyle(Paint.Style.STROKE);
             gridPaint.setColor(Color.rgb(229, 231, 235));
             gridPaint.setStrokeWidth(1f);
             textPaint.setColor(Color.rgb(75, 85, 99));
-            textPaint.setTextSize(28f);
+            textPaint.setTextSize(24f);
             xPaint.setColor(Color.rgb(220, 38, 38));
             yPaint.setColor(Color.rgb(22, 163, 74));
             zPaint.setColor(Color.rgb(37, 99, 235));
             mPaint.setColor(Color.rgb(124, 58, 237));
-            for (Paint p : new Paint[]{xPaint, yPaint, zPaint, mPaint}) p.setStrokeWidth(3f);
+            Paint[] paints = new Paint[]{xPaint, yPaint, zPaint, mPaint};
+            for (Paint p : paints) {
+                p.setStrokeWidth(3f);
+                p.setStyle(Paint.Style.STROKE);
+            }
             setBackgroundColor(Color.WHITE);
         }
 
@@ -473,42 +592,48 @@ public class MainActivity extends Activity implements SensorEventListener {
             invalidate();
         }
 
-        public int getPointCount() {
-            return points.size();
-        }
-
         @Override
         protected void onDraw(Canvas canvas) {
+            try {
+                drawPlot(canvas);
+            } catch (Throwable ignored) {
+                canvas.drawColor(Color.WHITE);
+            }
+        }
+
+        private void drawPlot(Canvas canvas) {
             super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
+            int w = Math.max(getWidth(), 10);
+            int h = Math.max(getHeight(), 10);
             int left = 56, right = 18, top = 28, bottom = 44;
             float x0 = left, x1 = w - right, y0 = top, y1 = h - bottom;
-            canvas.drawRect(x0, y0, x1, y1, axisPaint);
+            canvas.drawRect(x0, y0, x1, y1, borderPaint);
             for (int i = 1; i < 4; i++) {
                 float yy = y0 + i * (y1 - y0) / 4f;
                 canvas.drawLine(x0, yy, x1, yy, gridPaint);
             }
-            canvas.drawText("Bx red, By green, Bz blue, |B| purple (recent window)", x0, h - 12, textPaint);
+            canvas.drawText("Bx red, By green, Bz blue, |B| purple", x0, h - 12, textPaint);
             if (points.size() < 2) {
-                canvas.drawText("Waiting for magnetometer samples...", x0 + 10, y0 + 45, textPaint);
+                canvas.drawText("Waiting for samples...", x0 + 10, y0 + 45, textPaint);
                 return;
             }
             float min = Float.POSITIVE_INFINITY;
             float max = Float.NEGATIVE_INFINITY;
             for (float[] p : points) {
                 for (int i = 1; i <= 4; i++) {
-                    if (Float.isFinite(p[i])) {
+                    if (isFinite(p[i])) {
                         min = Math.min(min, p[i]);
                         max = Math.max(max, p[i]);
                     }
                 }
             }
-            if (!Float.isFinite(min) || !Float.isFinite(max) || Math.abs(max - min) < 1e-6f) {
-                min = -1f; max = 1f;
+            if (!isFinite(min) || !isFinite(max) || Math.abs(max - min) < 1e-6f) {
+                min = -1f;
+                max = 1f;
             }
             float pad = 0.08f * (max - min);
-            min -= pad; max += pad;
+            min -= pad;
+            max += pad;
             canvas.drawText(String.format(Locale.US, "%.1f µT", max), 4, y0 + 10, textPaint);
             canvas.drawText(String.format(Locale.US, "%.1f µT", min), 4, y1, textPaint);
             drawSeries(canvas, x0, x1, y0, y1, min, max, 1, xPaint);
@@ -523,13 +648,21 @@ public class MainActivity extends Activity implements SensorEventListener {
             Float lastX = null, lastY = null;
             for (float[] p : points) {
                 float v = p[idx];
-                if (!Float.isFinite(v)) { i++; continue; }
+                if (!isFinite(v)) {
+                    i++;
+                    continue;
+                }
                 float x = x0 + (x1 - x0) * i / Math.max(1, n - 1);
                 float y = y1 - (y1 - y0) * (v - min) / Math.max(1e-6f, max - min);
                 if (lastX != null) c.drawLine(lastX, lastY, x, y, paint);
-                lastX = x; lastY = y;
+                lastX = x;
+                lastY = y;
                 i++;
             }
+        }
+
+        private static boolean isFinite(float v) {
+            return !Float.isNaN(v) && !Float.isInfinite(v);
         }
     }
 }
