@@ -4,22 +4,37 @@ on:
   pull_request:
   push:
     branches: [main, feature/magnetometer-logger-app]
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-and-smoke-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
       - name: Build debug APK
         run: gradle :app:assembleDebug
+
+      - name: Run emulator launch smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: gradle :app:connectedDebugAndroidTest
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
