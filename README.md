@@ -2,18 +2,23 @@
 
 Native Android magnetometer recorder for testing whether the phone magnetometer can capture respiration-related motion or weak cardiac-related components.
 
-The app records the phone's magnetic field sensor and exports data in a simple phyphox-like format: one CSV file for samples and one JSON file for metadata.
+Current stable test build: `0.3.0`.
+
+The app now opens through a safe launcher screen first. The magnetometer is not accessed until the recorder screen is opened and Start is pressed.
+
+The app records the phone's magnetic field sensor and exports samples in CSV format with metadata header lines.
 
 ## Features
 
+- Safe launcher screen that does not access sensors.
+- Separate magnetometer recorder screen.
 - Records calibrated `TYPE_MAGNETIC_FIELD` when available.
 - Falls back to `TYPE_MAGNETIC_FIELD_UNCALIBRATED` if a calibrated magnetometer is unavailable.
 - Captures all three axes: `Bx_uT`, `By_uT`, `Bz_uT`.
 - Computes `B_abs_uT = sqrt(Bx^2 + By^2 + Bz^2)`.
 - Saves Android sensor timestamps in nanoseconds plus a relative `time_s` column.
 - Saves sample-to-sample interval `dt_ms` so the real sampling rate can be checked offline.
-- Shows a live plot of Bx, By, Bz and |B|.
-- Exports CSV + JSON metadata to `Downloads/MAG_Recorder/`.
+- Uses Android's built-in save-file picker for CSV export.
 - Includes subject/session ID and notes fields for posture, placement, task, and reference-device comments.
 
 ## Exported CSV columns
@@ -23,24 +28,6 @@ time_s,sensor_timestamp_ns,system_start_unix_ms,Bx_uT,By_uT,Bz_uT,B_abs_uT,bias_
 ```
 
 For calibrated magnetometer recordings, the bias columns are `NaN`. For uncalibrated magnetometer recordings, Android may provide estimated hard-iron bias values.
-
-## Metadata JSON
-
-The metadata file stores:
-
-- app version
-- subject/session label
-- notes
-- UTC start time
-- phone manufacturer/model
-- Android version
-- sensor name/vendor/type
-- sensor resolution and range
-- requested sampling period
-- sample count
-- duration
-- estimated sampling rate
-- CSV column description
 
 ## Build locally
 
@@ -58,7 +45,12 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## Build from GitHub Actions
 
-A workflow is included at `.github/workflows/android-build.yml`. After pushing a branch or opening a pull request, open the workflow run and download the `mag-recorder-debug-apk` artifact.
+Two workflows are included:
+
+- `Android build`: compiles the app and uploads `mag-recorder-debug-apk`.
+- `Android emulator smoke test`: installs the app on an emulator, opens the launcher, and verifies that the recorder screen opens.
+
+Only install an APK after both workflows are green.
 
 ## Experimental protocol notes
 
