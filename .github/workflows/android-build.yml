@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-smoke-test:
+  build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,17 +23,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Run JVM launch tests
+        run: gradle :app:testDebugUnitTest
+
       - name: Build debug APK
         run: gradle :app:assembleDebug
-
-      - name: Run emulator launch smoke tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          script: gradle :app:connectedDebugAndroidTest
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
