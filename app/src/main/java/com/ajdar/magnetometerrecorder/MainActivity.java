@@ -17,16 +17,16 @@ public class MainActivity extends Activity {
         int pad = dp(18);
         root.setPadding(pad, pad, pad, pad);
         TextView title = new TextView(this);
-        title.setText("MAG Recorder v5.2");
+        title.setText("MAG Recorder v6");
         title.setTextSize(28);
         root.addView(title);
         TextView body = new TextView(this);
-        body.setText("Version 5.2. Four separate x-y plots plus CSV export: Bx, By, Bz and |B| versus time.");
+        body.setText("Version 6.0. Paper-friendly MAG plots plus CSV logging for magnetometer, linear acceleration and gyroscope.");
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
         Button open = new Button(this);
-        open.setText("Open Plots + CSV Recorder");
+        open.setText("Open v6 Recorder");
         root.addView(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
