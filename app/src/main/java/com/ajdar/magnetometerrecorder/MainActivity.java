@@ -17,21 +17,21 @@ public class MainActivity extends Activity {
         int pad = dp(18);
         root.setPadding(pad, pad, pad, pad);
         TextView title = new TextView(this);
-        title.setText("MAG Recorder v5");
+        title.setText("MAG Recorder v5.1");
         title.setTextSize(28);
         root.addView(title);
         TextView body = new TextView(this);
-        body.setText("Version 5.0. This screen does not access sensors. Press the button below to open the recorder with live magnetic-field plot.");
+        body.setText("Version 5.1. Opens four separate x-y plots: Bx, By, Bz and |B| versus time.");
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
         Button open = new Button(this);
-        open.setText("Open Magnetometer Recorder");
+        open.setText("Open Separate X-Y Plots");
         root.addView(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(MainActivity.this, RecorderActivity.class));
+                startActivity(new Intent(MainActivity.this, PlotV51Activity.class));
             }
         });
         setContentView(root);
