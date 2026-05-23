@@ -10,8 +10,8 @@ android {
         applicationId = "com.ajdar.magnetometerrecorder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "0.4.0"
+        versionCode = 50
+        versionName = "5.0"
     }
 
     compileOptions {
