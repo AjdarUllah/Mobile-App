@@ -6,7 +6,7 @@
         android:required="false" />
 
     <application
-        android:label="MAG Recorder"
+        android:label="MAG Recorder v0.4.0"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".RecorderActivity"
