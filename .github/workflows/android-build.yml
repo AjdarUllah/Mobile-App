@@ -26,8 +26,11 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug
 
-      - name: Upload debug APK
+      - name: Rename APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v0.4.0-debug.apk
+
+      - name: Upload MAG Recorder v0.4.0 APK
         uses: actions/upload-artifact@v4
         with:
-          name: mag-recorder-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: MAG-RECORDER-v0.4.0-debug-apk
+          path: app/build/outputs/apk/debug/MAG-Recorder-v0.4.0-debug.apk
