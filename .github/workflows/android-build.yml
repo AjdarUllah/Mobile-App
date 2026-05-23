@@ -27,10 +27,10 @@ jobs:
         run: gradle :app:assembleDebug
 
       - name: Rename APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v51-separate-plots-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v52-plots-csv-debug.apk
 
-      - name: Upload MAG Recorder v51 APK
+      - name: Upload MAG Recorder v52 APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAG-RECORDER-v51-SEPARATE-PLOTS-debug-apk
-          path: app/build/outputs/apk/debug/MAG-Recorder-v51-separate-plots-debug.apk
+          name: MAG-RECORDER-v52-PLOTS-CSV-debug-apk
+          path: app/build/outputs/apk/debug/MAG-Recorder-v52-plots-csv-debug.apk
