@@ -17,11 +17,11 @@ public class MainActivity extends Activity {
         int pad = dp(18);
         root.setPadding(pad, pad, pad, pad);
         TextView title = new TextView(this);
-        title.setText("MAG Recorder");
+        title.setText("MAG Recorder v5");
         title.setTextSize(28);
         root.addView(title);
         TextView body = new TextView(this);
-        body.setText("Safe launcher build v0.3.0. This screen does not access sensors. Press the button below to open the recorder.");
+        body.setText("Version 5.0. This screen does not access sensors. Press the button below to open the recorder with live magnetic-field plot.");
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
