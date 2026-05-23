@@ -1,7 +1,11 @@
 package com.ajdar.magnetometerrecorder;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -25,6 +29,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
@@ -33,7 +38,7 @@ import java.util.TimeZone;
 public class RecorderActivity extends Activity implements SensorEventListener {
     private static final int CREATE_CSV_REQUEST = 4001;
     private static final int SAMPLE_PERIOD_US = 20_000;
-    private static final String VERSION = "0.3.0";
+    private static final String VERSION = "5.0";
 
     private SensorManager sensorManager;
     private Sensor magSensor;
@@ -45,6 +50,8 @@ public class RecorderActivity extends Activity implements SensorEventListener {
     private Button startButton;
     private Button stopButton;
     private Button saveButton;
+    private MagneticPlotView plotView;
+
     private final ArrayList<Sample> samples = new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean recording = false;
@@ -91,7 +98,7 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         scroll.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("Magnetometer Recorder");
+        title.setText("Magnetometer Recorder v5");
         title.setTextSize(24);
         root.addView(title);
 
@@ -129,9 +136,18 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         root.addView(statusText);
 
         valuesText = new TextView(this);
-        valuesText.setTextSize(18);
+        valuesText.setTextSize(16);
         valuesText.setPadding(0, dp(8), 0, dp(8));
         root.addView(valuesText);
+
+        plotView = new MagneticPlotView(this);
+        root.addView(plotView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(320)));
+
+        TextView axisNote = new TextView(this);
+        axisNote.setText("Live plot: x-axis = time (s), y-axis = magnetic field (µT). Red=Bx, Green=By, Blue=Bz, Purple=|B|.");
+        axisNote.setTextSize(13);
+        axisNote.setPadding(0, dp(6), 0, dp(8));
+        root.addView(axisNote);
 
         sensorText = new TextView(this);
         sensorText.setTextSize(13);
@@ -186,6 +202,7 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         try {
             if (!setupSensorIfNeeded()) return;
             samples.clear();
+            plotView.clear();
             firstSensorNs = -1L;
             lastSensorNs = -1L;
             startWallMs = System.currentTimeMillis();
@@ -203,7 +220,7 @@ public class RecorderActivity extends Activity implements SensorEventListener {
                 statusText.setText("Could not register magnetometer listener.");
                 return;
             }
-            statusText.setText("Recording...");
+            statusText.setText("Recording and plotting Bx/By/Bz/|B|...");
         } catch (Throwable t) {
             recording = false;
             resetButtonsAfterStop();
@@ -234,7 +251,7 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         String session = clean(sessionEdit.getText().toString());
         if (session.length() == 0) session = "session";
         String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date(startWallMs > 0 ? startWallMs : System.currentTimeMillis()));
-        String filename = "mag_" + session + "_" + stamp + ".csv";
+        String filename = "mag_v5_" + session + "_" + stamp + ".csv";
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/csv");
@@ -276,7 +293,10 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         float biasX = event.values.length > 3 ? event.values[3] : Float.NaN;
         float biasY = event.values.length > 4 ? event.values[4] : Float.NaN;
         float biasZ = event.values.length > 5 ? event.values[5] : Float.NaN;
-        if (recording) samples.add(new Sample(timeS, event.timestamp, bx, by, bz, babs, biasX, biasY, biasZ, accuracy, dtMs));
+        if (recording) {
+            samples.add(new Sample(timeS, event.timestamp, bx, by, bz, babs, biasX, biasY, biasZ, accuracy, dtMs));
+            plotView.add((float) timeS, bx, by, bz, babs);
+        }
     }
 
     @Override
@@ -287,14 +307,17 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         double duration = firstSensorNs >= 0 && lastSensorNs > firstSensorNs ? (lastSensorNs - firstSensorNs) / 1_000_000_000.0 : 0.0;
         double fs = duration > 0 && n > 1 ? (n - 1) / duration : 0.0;
         valuesText.setText(String.format(Locale.US,
-                "Bx: %.3f µT\nBy: %.3f µT\nBz: %.3f µT\n|B|: %.3f µT\nSamples: %d\nDuration: %.1f s\nEstimated fs: %.1f Hz\nAccuracy: %s",
+                "Bx: %.3f µT   By: %.3f µT   Bz: %.3f µT   |B|: %.3f µT\nSamples: %d   Duration: %.1f s   Estimated fs: %.1f Hz   Accuracy: %s",
                 bx, by, bz, babs, n, duration, fs, accuracyText(accuracy)));
+        if (plotView != null) plotView.invalidate();
     }
 
     private String buildCsvWithMetadata() {
         StringBuilder sb = new StringBuilder(Math.max(4096, samples.size() * 110));
         sb.append("# MAG Recorder metadata\n");
         sb.append("# app_version,").append(VERSION).append("\n");
+        sb.append("# plot_x_axis,time_s\n");
+        sb.append("# plot_y_axis,magnetic_field_uT\n");
         sb.append("# subject_or_session,").append(csv(sessionEdit.getText().toString())).append("\n");
         sb.append("# notes,").append(csv(notesEdit.getText().toString())).append("\n");
         sb.append("# start_time_utc,").append(utc(startWallMs > 0 ? startWallMs : System.currentTimeMillis())).append("\n");
@@ -344,6 +367,110 @@ public class RecorderActivity extends Activity implements SensorEventListener {
         final double timeS; final long timestampNs; final float bx, by, bz, babs, biasX, biasY, biasZ; final int accuracy; final double dtMs;
         Sample(double timeS, long timestampNs, float bx, float by, float bz, float babs, float biasX, float biasY, float biasZ, int accuracy, double dtMs) {
             this.timeS = timeS; this.timestampNs = timestampNs; this.bx = bx; this.by = by; this.bz = bz; this.babs = babs; this.biasX = biasX; this.biasY = biasY; this.biasZ = biasZ; this.accuracy = accuracy; this.dtMs = dtMs;
+        }
+    }
+
+    public static class MagneticPlotView extends View {
+        private static final int MAX_POINTS = 700;
+        private final ArrayDeque<float[]> points = new ArrayDeque<>();
+        private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint bxPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint byPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint bzPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint magPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        public MagneticPlotView(Context context) {
+            super(context);
+            setBackgroundColor(Color.WHITE);
+            borderPaint.setColor(Color.rgb(30, 30, 30));
+            borderPaint.setStrokeWidth(2f);
+            borderPaint.setStyle(Paint.Style.STROKE);
+            gridPaint.setColor(Color.rgb(220, 220, 220));
+            gridPaint.setStrokeWidth(1f);
+            textPaint.setColor(Color.rgb(60, 60, 60));
+            textPaint.setTextSize(24f);
+            bxPaint.setColor(Color.rgb(220, 0, 0));
+            byPaint.setColor(Color.rgb(0, 150, 0));
+            bzPaint.setColor(Color.rgb(0, 80, 220));
+            magPaint.setColor(Color.rgb(130, 0, 170));
+            Paint[] paints = new Paint[]{bxPaint, byPaint, bzPaint, magPaint};
+            for (Paint p : paints) {
+                p.setStrokeWidth(3f);
+                p.setStyle(Paint.Style.STROKE);
+            }
+        }
+
+        public void clear() {
+            points.clear();
+            invalidate();
+        }
+
+        public void add(float t, float bx, float by, float bz, float babs) {
+            points.addLast(new float[]{t, bx, by, bz, babs});
+            while (points.size() > MAX_POINTS) points.removeFirst();
+            postInvalidateOnAnimation();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            int w = Math.max(getWidth(), 10);
+            int h = Math.max(getHeight(), 10);
+            float left = 64f, top = 28f, right = w - 18f, bottom = h - 54f;
+            canvas.drawRect(left, top, right, bottom, borderPaint);
+            for (int i = 1; i < 4; i++) {
+                float y = top + i * (bottom - top) / 4f;
+                canvas.drawLine(left, y, right, y, gridPaint);
+            }
+            canvas.drawText("µT", 8f, top + 18f, textPaint);
+            canvas.drawText("time (s)", right - 95f, h - 15f, textPaint);
+            if (points.size() < 2) {
+                canvas.drawText("Waiting for MAG samples...", left + 12f, top + 48f, textPaint);
+                return;
+            }
+            float minT = points.peekFirst()[0];
+            float maxT = points.peekLast()[0];
+            if (maxT <= minT) maxT = minT + 1f;
+            float minV = Float.POSITIVE_INFINITY;
+            float maxV = Float.NEGATIVE_INFINITY;
+            for (float[] p : points) {
+                for (int i = 1; i <= 4; i++) {
+                    float v = p[i];
+                    if (!Float.isNaN(v) && !Float.isInfinite(v)) {
+                        minV = Math.min(minV, v);
+                        maxV = Math.max(maxV, v);
+                    }
+                }
+            }
+            if (minV == Float.POSITIVE_INFINITY || maxV == Float.NEGATIVE_INFINITY || Math.abs(maxV - minV) < 1e-6f) {
+                minV = -1f;
+                maxV = 1f;
+            }
+            float pad = 0.08f * (maxV - minV);
+            minV -= pad;
+            maxV += pad;
+            canvas.drawText(String.format(Locale.US, "%.1f", maxV), 4f, top + 12f, textPaint);
+            canvas.drawText(String.format(Locale.US, "%.1f", minV), 4f, bottom, textPaint);
+            canvas.drawText(String.format(Locale.US, "%.1fs", minT), left, h - 15f, textPaint);
+            drawSeries(canvas, left, top, right, bottom, minT, maxT, minV, maxV, 1, bxPaint);
+            drawSeries(canvas, left, top, right, bottom, minT, maxT, minV, maxV, 2, byPaint);
+            drawSeries(canvas, left, top, right, bottom, minT, maxT, minV, maxV, 3, bzPaint);
+            drawSeries(canvas, left, top, right, bottom, minT, maxT, minV, maxV, 4, magPaint);
+        }
+
+        private void drawSeries(Canvas c, float left, float top, float right, float bottom, float minT, float maxT, float minV, float maxV, int idx, Paint paint) {
+            Float lastX = null, lastY = null;
+            for (float[] p : points) {
+                float v = p[idx];
+                if (Float.isNaN(v) || Float.isInfinite(v)) continue;
+                float x = left + (right - left) * (p[0] - minT) / Math.max(1e-6f, maxT - minT);
+                float y = bottom - (bottom - top) * (v - minV) / Math.max(1e-6f, maxV - minV);
+                if (lastX != null) c.drawLine(lastX, lastY, x, y, paint);
+                lastX = x;
+                lastY = y;
+            }
         }
     }
 }
