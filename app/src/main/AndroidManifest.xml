@@ -3,7 +3,7 @@
 
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
 
-    <application android:label="MAG Recorder v6.2" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <application android:label="MAG Recorder v6.3" android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".PlotV51Activity" android:exported="false" />
         <activity android:name=".RecorderActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
