@@ -27,10 +27,10 @@ jobs:
         run: gradle :app:assembleDebug
 
       - name: Rename APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v64-persistent-controls-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v65-discard-zoom-debug.apk
 
-      - name: Upload MAG Recorder v64 APK
+      - name: Upload MAG Recorder v65 APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAG-RECORDER-v64-PERSISTENT-CONTROLS-debug-apk
-          path: app/build/outputs/apk/debug/MAG-Recorder-v64-persistent-controls-debug.apk
+          name: MAG-RECORDER-v65-DISCARD-ZOOM-debug-apk
+          path: app/build/outputs/apk/debug/MAG-Recorder-v65-discard-zoom-debug.apk
