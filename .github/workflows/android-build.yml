@@ -1,0 +1,36 @@
+name: Android build
+
+on:
+  pull_request:
+  push:
+    branches: [main, feature/magnetometer-logger-app]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Rename APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v66-high-rate-debug.apk
+
+      - name: Upload MAG Recorder v66 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAG-RECORDER-v66-HIGH-RATE-debug-apk
+          path: app/build/outputs/apk/debug/MAG-Recorder-v66-high-rate-debug.apk
