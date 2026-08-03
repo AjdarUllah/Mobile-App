@@ -1,0 +1,11 @@
+name: Android emulator smoke test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disabled
+        run: echo "Emulator smoke test is disabled because hosted emulator setup was flaky. Use Android build for APK generation."

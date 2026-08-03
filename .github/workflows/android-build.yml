@@ -1,0 +1,47 @@
+name: Android build
+
+on:
+  pull_request:
+  push:
+    branches: [main, feature/magnetometer-logger-app, "codex/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Verify APK identity
+        shell: bash
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)"
+          BADGING="$("$AAPT2" dump badging "$APK")"
+          grep -Fq "package: name='com.ajdar.magnetometerrecorder' versionCode='73' versionName='7.3'" <<< "$BADGING"
+          grep -Fq "launchable-activity: name='com.ajdar.magnetometerrecorder.MainActivity'" <<< "$BADGING"
+
+      - name: Rename APK with version
+        if: github.event_name != 'pull_request'
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Pressure-MAG-Recorder-v73-debug.apk
+
+      - name: Upload Pressure MAG Recorder v73 APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v6
+        with:
+          name: PRESSURE-MAG-RECORDER-v73-run-${{ github.run_number }}-debug-apk
+          path: app/build/outputs/apk/debug/Pressure-MAG-Recorder-v73-debug.apk
