@@ -5,7 +5,7 @@
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.barometer" android:required="false" />
 
-    <application android:label="Pressure MAG Recorder v7.1" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <application android:label="Pressure MAG Recorder v7.2" android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".HealthRecorderActivity" android:exported="false" />
         <activity android:name=".PlotV51Activity" android:exported="false" />
         <activity android:name=".RecorderActivity" android:exported="false" />

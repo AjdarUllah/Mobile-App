@@ -51,7 +51,7 @@ import java.util.zip.ZipOutputStream;
 
 public class HealthRecorderActivity extends Activity implements SensorEventListener {
     private static final int SAVE_ZIP_REQUEST = 7001;
-    private static final String VERSION = "7.1";
+    private static final String VERSION = "7.2";
 
     private SensorManager sensorManager;
     private Sensor magSensor;
@@ -194,7 +194,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         root.setBackgroundColor(Color.rgb(246, 248, 252));
         root.setPadding(dp(12), dp(10), dp(12), dp(10));
 
-        TextView title = tv("Pressure + MAG Recorder v7.1", 25, Color.rgb(15, 23, 42));
+        TextView title = tv("Pressure + MAG Recorder v7.2", 25, Color.rgb(15, 23, 42));
         root.addView(title);
         root.addView(tv("Records phyphox-style pressure and magnetometer files, then computes pressure HR and magnetometer respiration after Stop.", 13, Color.rgb(71, 85, 105)));
 
@@ -786,7 +786,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/zip");
-        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v71_" + id + "_" + stamp + ".zip");
+        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v72_" + id + "_" + stamp + ".zip");
         startActivityForResult(intent, SAVE_ZIP_REQUEST);
     }
 

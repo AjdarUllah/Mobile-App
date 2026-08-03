@@ -2,7 +2,7 @@
 
 Native Android recorder for live phone pressure/barometer and magnetometer recordings, with optional linear acceleration and gyroscope logging.
 
-Version 7.1 adds post-recording derived outputs and a guarded startup screen:
+Version 7.2 adds post-recording derived outputs and verifies the APK package before GitHub publishes it:
 
 - pressure-derived heart-rate windows from the phone barometer, with SQI and above-85 bpm unreliability flags
 - magnetometer-derived respiration from the By axis
@@ -35,6 +35,10 @@ The APK will be created at:
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Download from GitHub Actions
+
+Open the Android build run triggered by a branch push. Download the artifact named PRESSURE-MAG-RECORDER-v72-run-<run number>-debug-apk, extract it, and install Pressure-MAG-Recorder-v72-debug.apk. Pull-request runs validate the merged code but deliberately do not publish APK artifacts.
 
 ## Recording Notes
 
