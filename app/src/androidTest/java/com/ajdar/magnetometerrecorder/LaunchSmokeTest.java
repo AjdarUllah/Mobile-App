@@ -20,14 +20,14 @@ public class LaunchSmokeTest {
 
     @Test
     public void launcherOpens() {
-        onView(withText("MAG + Pressure Recorder")).check(matches(isDisplayed()));
-        onView(withText("Open Health Recorder")).check(matches(isDisplayed()));
+        onView(withText("Pressure MAG Recorder v7.1")).check(matches(isDisplayed()));
+        onView(withText("Open Health Recorder v7.1")).check(matches(isDisplayed()));
     }
 
     @Test
     public void recorderScreenOpensFromLauncher() {
-        onView(withText("Open Health Recorder")).perform(click());
-        onView(withText("Pressure + MAG Recorder v7.0")).check(matches(isDisplayed()));
+        onView(withText("Open Health Recorder v7.1")).perform(click());
+        onView(withText("Pressure + MAG Recorder v7.1")).check(matches(isDisplayed()));
         onView(withText("START")).check(matches(isDisplayed()));
     }
 }

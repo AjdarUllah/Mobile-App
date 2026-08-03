@@ -51,7 +51,7 @@ import java.util.zip.ZipOutputStream;
 
 public class HealthRecorderActivity extends Activity implements SensorEventListener {
     private static final int SAVE_ZIP_REQUEST = 7001;
-    private static final String VERSION = "7.0";
+    private static final String VERSION = "7.1";
 
     private SensorManager sensorManager;
     private Sensor magSensor;
@@ -132,6 +132,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     private int gyroAccuracy = 0;
 
     private DerivedAnalysis.AnalysisResult analysis;
+    private boolean uiReady = false;
 
     private final Runnable ticker = new Runnable() {
         @Override
@@ -144,14 +145,40 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     @Override
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
-        buildUi();
+        try {
+            buildUi();
+            uiReady = true;
+        } catch (Throwable throwable) {
+            showStartupError(throwable);
+        }
+    }
+
+    private void showStartupError(Throwable throwable) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(18);
+        root.setPadding(pad, pad, pad, pad);
+        TextView title = new TextView(this);
+        title.setText("Recorder startup failed");
+        title.setTextSize(24);
+        root.addView(title);
+        TextView body = new TextView(this);
+        body.setText(throwable.getClass().getSimpleName() + ": " + throwable.getMessage());
+        body.setTextSize(16);
+        body.setPadding(0, dp(12), 0, dp(12));
+        root.addView(body);
+        Button oldRecorder = new Button(this);
+        oldRecorder.setText("Open old v6 recorder");
+        oldRecorder.setOnClickListener(v -> startActivity(new Intent(this, PlotV51Activity.class)));
+        root.addView(oldRecorder);
+        setContentView(root);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         handler.removeCallbacks(ticker);
-        handler.post(ticker);
+        if (uiReady) handler.post(ticker);
     }
 
     @Override
@@ -167,7 +194,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         root.setBackgroundColor(Color.rgb(246, 248, 252));
         root.setPadding(dp(12), dp(10), dp(12), dp(10));
 
-        TextView title = tv("Pressure + MAG Recorder v7.0", 25, Color.rgb(15, 23, 42));
+        TextView title = tv("Pressure + MAG Recorder v7.1", 25, Color.rgb(15, 23, 42));
         root.addView(title);
         root.addView(tv("Records phyphox-style pressure and magnetometer files, then computes pressure HR and magnetometer respiration after Stop.", 13, Color.rgb(71, 85, 105)));
 
@@ -638,6 +665,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     }
 
     private void updateLiveValues() {
+        if (!uiReady || liveValuesText == null) return;
         float duration = firstSensorNs >= 0 ? (SystemClock.elapsedRealtimeNanos() - firstSensorNs) / 1_000_000_000f : 0f;
         liveValuesText.setText(String.format(Locale.US,
                 "Pressure\n%.3f hPa\n\nMAG\nBx %.2f  By %.2f  Bz %.2f  |B| %.2f uT\n\nLinear ACC without gravity\nAx %.3f  Ay %.3f  Az %.3f m/s2\n\nGYRO\nGx %.3f  Gy %.3f  Gz %.3f rad/s\n\nEvents %d   Duration %.1f s   Frequency %s",
@@ -758,7 +786,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/zip");
-        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v70_" + id + "_" + stamp + ".zip");
+        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v71_" + id + "_" + stamp + ".zip");
         startActivityForResult(intent, SAVE_ZIP_REQUEST);
     }
 

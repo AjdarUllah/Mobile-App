@@ -2,7 +2,7 @@
 
 Native Android recorder for live phone pressure/barometer and magnetometer recordings, with optional linear acceleration and gyroscope logging.
 
-Version 7 adds post-recording derived outputs:
+Version 7.1 adds post-recording derived outputs and a guarded startup screen:
 
 - pressure-derived heart-rate windows from the phone barometer, with SQI and above-85 bpm unreliability flags
 - magnetometer-derived respiration from the By axis
