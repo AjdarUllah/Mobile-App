@@ -1,33 +1,26 @@
-# MAG Recorder
+# Pressure + Magnetometer Health Recorder
 
-Native Android magnetometer recorder for testing whether the phone magnetometer can capture respiration-related motion or weak cardiac-related components.
+Native Android recorder for live phone pressure/barometer and magnetometer recordings, with optional linear acceleration and gyroscope logging.
 
-Current stable test build: `0.3.0`.
+Version 7 adds post-recording derived outputs:
 
-The app now opens through a safe launcher screen first. The magnetometer is not accessed until the recorder screen is opened and Start is pressed.
+- pressure-derived heart-rate windows from the phone barometer, with SQI and above-85 bpm unreliability flags
+- magnetometer-derived respiration from the By axis
+- on-device plots for pressure HR, respiration rate, and the filtered respiration waveform
+- a phyphox-style ZIP export that keeps raw files separate from derived files
 
-The app records the phone's magnetic field sensor and exports samples in CSV format with metadata header lines.
+The ZIP contains:
 
-## Features
+- `Pressure/Pressure.csv` plus `Pressure/meta/time.csv`
+- `Magnetometer 1/Magnetometer.csv` plus `Magnetometer 1/meta/time.csv`
+- `raw/EventTable.csv`
+- `derived/pressure_hr.csv` with before-SQI HR, pressure SQI, after-SQI HR, and reliability status
+- `derived/magnetometer_respiration_track.csv`
+- `derived/magnetometer_respiration_per_minute.csv`
+- `derived/magnetometer_respiration_peaks.csv`
+- `derived/summary.csv`
 
-- Safe launcher screen that does not access sensors.
-- Separate magnetometer recorder screen.
-- Records calibrated `TYPE_MAGNETIC_FIELD` when available.
-- Falls back to `TYPE_MAGNETIC_FIELD_UNCALIBRATED` if a calibrated magnetometer is unavailable.
-- Captures all three axes: `Bx_uT`, `By_uT`, `Bz_uT`.
-- Computes `B_abs_uT = sqrt(Bx^2 + By^2 + Bz^2)`.
-- Saves Android sensor timestamps in nanoseconds plus a relative `time_s` column.
-- Saves sample-to-sample interval `dt_ms` so the real sampling rate can be checked offline.
-- Uses Android's built-in save-file picker for CSV export.
-- Includes subject/session ID and notes fields for posture, placement, task, and reference-device comments.
-
-## Exported CSV columns
-
-```text
-time_s,sensor_timestamp_ns,system_start_unix_ms,Bx_uT,By_uT,Bz_uT,B_abs_uT,bias_x_uT,bias_y_uT,bias_z_uT,accuracy,dt_ms
-```
-
-For calibrated magnetometer recordings, the bias columns are `NaN`. For uncalibrated magnetometer recordings, Android may provide estimated hard-iron bias values.
+The raw files intentionally keep the phyphox-style two-column sensor tables so existing analysis scripts can still read column 1 as time and column 2 as sensor value. The derived files add HR and respiration without changing the raw export surface.
 
 ## Build locally
 
@@ -43,23 +36,6 @@ The APK will be created at:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Build from GitHub Actions
+## Recording Notes
 
-Two workflows are included:
-
-- `Android build`: compiles the app and uploads `mag-recorder-debug-apk`.
-- `Android emulator smoke test`: installs the app on an emulator, opens the launcher, and verifies that the recorder screen opens.
-
-Only install an APK after both workflows are green.
-
-## Experimental protocol notes
-
-For respiration experiments, keep the phone and body placement reproducible:
-
-1. Record a reference respiratory belt / spirometer / capnography signal at the same time.
-2. Log posture and phone position in the notes field.
-3. Avoid magnetic cases, speakers, metal tables, laptops, charging cables and moving ferromagnetic objects.
-4. Test multiple breathing tasks: normal, slow, fast, deep, breath-hold and recovery.
-5. Use the exported `dt_ms` column to verify that the actual sampling is stable enough before signal processing.
-
-Important: phone magnetometers usually measure ambient field changes in microtesla. If a permanent magnet is attached to the chest/abdomen, the method becomes magnetic displacement tracking rather than intrinsic biomagnetic sensing. Keep this distinction clear in the paper.
+For demonstration recordings, keep phone placement and posture reproducible. Pressure-derived HR is computed after the recording stops in 10-second windows. The Derived tab shows pressure HR before SQI and after SQI; any pressure-HR window above 85 bpm is marked `unreliable_above_85_bpm`. Magnetometer respiration uses the By-axis fixed respiration pathway and is also computed after Stop. The Derived tab changes color when the computation has completed.

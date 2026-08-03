@@ -17,21 +17,21 @@ public class MainActivity extends Activity {
         int pad = dp(18);
         root.setPadding(pad, pad, pad, pad);
         TextView title = new TextView(this);
-        title.setText("MAG Recorder v6");
+        title.setText("MAG + Pressure Recorder");
         title.setTextSize(28);
         root.addView(title);
         TextView body = new TextView(this);
-        body.setText("Version 6.0. Paper-friendly MAG plots plus CSV logging for magnetometer, linear acceleration and gyroscope.");
+        body.setText("Version 7.0. Live pressure, magnetometer, acceleration, and gyroscope logging with post-recording pressure HR and magnetometer respiration plots.");
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
         Button open = new Button(this);
-        open.setText("Open v6 Recorder");
+        open.setText("Open Health Recorder");
         root.addView(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(MainActivity.this, PlotV51Activity.class));
+                startActivity(new Intent(MainActivity.this, HealthRecorderActivity.class));
             }
         });
         setContentView(root);

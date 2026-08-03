@@ -3,7 +3,7 @@ name: Android build
 on:
   pull_request:
   push:
-    branches: [main, feature/magnetometer-logger-app]
+    branches: [main, feature/magnetometer-logger-app, "codex/**"]
   workflow_dispatch:
 
 jobs:
@@ -27,10 +27,10 @@ jobs:
         run: gradle :app:assembleDebug
 
       - name: Rename APK with version
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MAG-Recorder-v66-high-rate-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Pressure-MAG-Recorder-v70-debug.apk
 
-      - name: Upload MAG Recorder v66 APK
+      - name: Upload Pressure MAG Recorder v70 APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAG-RECORDER-v66-HIGH-RATE-debug-apk
-          path: app/build/outputs/apk/debug/MAG-Recorder-v66-high-rate-debug.apk
+          name: PRESSURE-MAG-RECORDER-v70-debug-apk
+          path: app/build/outputs/apk/debug/Pressure-MAG-Recorder-v70-debug.apk
