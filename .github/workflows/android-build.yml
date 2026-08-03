@@ -32,16 +32,16 @@ jobs:
           APK="app/build/outputs/apk/debug/app-debug.apk"
           AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)"
           BADGING="$("$AAPT2" dump badging "$APK")"
-          grep -Fq "package: name='com.ajdar.magnetometerrecorder' versionCode='72' versionName='7.2'" <<< "$BADGING"
+          grep -Fq "package: name='com.ajdar.magnetometerrecorder' versionCode='73' versionName='7.3'" <<< "$BADGING"
           grep -Fq "launchable-activity: name='com.ajdar.magnetometerrecorder.MainActivity'" <<< "$BADGING"
 
       - name: Rename APK with version
         if: github.event_name != 'pull_request'
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Pressure-MAG-Recorder-v72-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Pressure-MAG-Recorder-v73-debug.apk
 
-      - name: Upload Pressure MAG Recorder v72 APK
+      - name: Upload Pressure MAG Recorder v73 APK
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v6
         with:
-          name: PRESSURE-MAG-RECORDER-v72-run-${{ github.run_number }}-debug-apk
-          path: app/build/outputs/apk/debug/Pressure-MAG-Recorder-v72-debug.apk
+          name: PRESSURE-MAG-RECORDER-v73-run-${{ github.run_number }}-debug-apk
+          path: app/build/outputs/apk/debug/Pressure-MAG-Recorder-v73-debug.apk

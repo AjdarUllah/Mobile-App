@@ -2,11 +2,11 @@
 
 Native Android recorder for live phone pressure/barometer and magnetometer recordings, with optional linear acceleration and gyroscope logging.
 
-Version 7.2 adds post-recording derived outputs and verifies the APK package before GitHub publishes it:
+Version 7.3 adds visible derived-signal decisions while preserving the raw phyphox-style export:
 
 - pressure-derived heart-rate windows from the phone barometer, with SQI and above-85 bpm unreliability flags
 - magnetometer-derived respiration from the By axis
-- on-device plots for pressure HR, respiration rate, and the filtered respiration waveform
+- on-device plots with rejected SQI windows, pressure peak events, respiration rate, and counted breaths on the filtered waveform
 - a phyphox-style ZIP export that keeps raw files separate from derived files
 
 The ZIP contains:
@@ -38,8 +38,8 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## Download from GitHub Actions
 
-Open the Android build run triggered by a branch push. Download the artifact named PRESSURE-MAG-RECORDER-v72-run-<run number>-debug-apk, extract it, and install Pressure-MAG-Recorder-v72-debug.apk. Pull-request runs validate the merged code but deliberately do not publish APK artifacts.
+Open the Android build run triggered by a branch push. Download the artifact named PRESSURE-MAG-RECORDER-v73-run-<run number>-debug-apk, extract it, and install Pressure-MAG-Recorder-v73-debug.apk. Pull-request runs validate the merged code but deliberately do not publish APK artifacts.
 
 ## Recording Notes
 
-For demonstration recordings, keep phone placement and posture reproducible. Pressure-derived HR is computed after the recording stops in 10-second windows. The Derived tab shows pressure HR before SQI and after SQI; any pressure-HR window above 85 bpm is marked `unreliable_above_85_bpm`. Magnetometer respiration uses the By-axis fixed respiration pathway and is also computed after Stop. The Derived tab changes color when the computation has completed.
+For demonstration recordings, keep phone placement and posture reproducible. Pressure-derived HR is computed after the recording stops in 10-second windows. The Derived tab shows pressure HR before and after SQI. Red bands/X markers are windows rejected above 85 bpm; amber bands/X markers are windows rejected for SQI below 0.35. The mobile SQI score combines 60% fused detector confidence with 40% agreement among peak, autocorrelation, and spectral pressure-HR families. The pressure cardiac plot marks peak-detector events. Magnetometer respiration uses the finalized fixed By-axis respiration pathway and marks every counted breath after Stop. The Derived tab changes color when the computation has completed.

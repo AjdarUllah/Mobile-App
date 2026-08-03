@@ -51,7 +51,7 @@ import java.util.zip.ZipOutputStream;
 
 public class HealthRecorderActivity extends Activity implements SensorEventListener {
     private static final int SAVE_ZIP_REQUEST = 7001;
-    private static final String VERSION = "7.2";
+    private static final String VERSION = "7.3";
 
     private SensorManager sensorManager;
     private Sensor magSensor;
@@ -101,6 +101,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     private PlotView gzPlot;
     private PlotView pressureHrBeforeSqiPlot;
     private PlotView pressureHrAfterSqiPlot;
+    private PlotView pressureWavePlot;
     private PlotView respirationPlot;
     private PlotView respirationWavePlot;
 
@@ -167,10 +168,6 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
-        Button oldRecorder = new Button(this);
-        oldRecorder.setText("Open old v6 recorder");
-        oldRecorder.setOnClickListener(v -> startActivity(new Intent(this, PlotV51Activity.class)));
-        root.addView(oldRecorder);
         setContentView(root);
     }
 
@@ -194,7 +191,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         root.setBackgroundColor(Color.rgb(246, 248, 252));
         root.setPadding(dp(12), dp(10), dp(12), dp(10));
 
-        TextView title = tv("Pressure + MAG Recorder v7.2", 25, Color.rgb(15, 23, 42));
+        TextView title = tv("Pressure + MAG Recorder v7.3", 25, Color.rgb(15, 23, 42));
         root.addView(title);
         root.addView(tv("Records phyphox-style pressure and magnetometer files, then computes pressure HR and magnetometer respiration after Stop.", 13, Color.rgb(71, 85, 105)));
 
@@ -356,12 +353,15 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         content.addView(tv("Derived Signals", 18, Color.rgb(15, 23, 42)));
         derivedSummaryText = tv("Stop a recording to compute pressure HR and magnetometer respiration.", 14, Color.rgb(51, 65, 85));
         content.addView(derivedSummaryText);
-        pressureHrBeforeSqiPlot = new PlotView(this, "Pressure HR before SQI", "HR (bpm)", Color.rgb(37, 99, 235));
-        pressureHrAfterSqiPlot = new PlotView(this, "Pressure HR after SQI", "HR (bpm)", Color.rgb(22, 163, 74));
+        pressureHrBeforeSqiPlot = new PlotView(this, "Pressure HR before SQI (bands/X = rejected)", "HR (bpm)", Color.rgb(37, 99, 235));
+        pressureHrAfterSqiPlot = new PlotView(this, "Pressure HR after SQI (X = removed)", "HR (bpm)", Color.rgb(22, 163, 74));
+        pressureHrAfterSqiPlot.setMaxConnectionGap(1.5f);
+        pressureWavePlot = new PlotView(this, "Pressure cardiac waveform (dots = peak events)", "z(pressure)", Color.rgb(2, 132, 199));
         respirationPlot = new PlotView(this, "Magnetometer respiration", "breaths/min", Color.rgb(5, 150, 105));
-        respirationWavePlot = new PlotView(this, "Filtered respiration waveform", "z(By)", Color.rgb(124, 58, 237));
+        respirationWavePlot = new PlotView(this, "Filtered respiration (dots = counted breaths)", "z(By)", Color.rgb(124, 58, 237));
         content.addView(pressureHrBeforeSqiPlot, plotSize());
         content.addView(pressureHrAfterSqiPlot, plotSize());
+        content.addView(pressureWavePlot, plotSize());
         content.addView(respirationPlot, plotSize());
         content.addView(respirationWavePlot, plotSize());
         derivedTab = wrap(content);
@@ -581,6 +581,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         gzPlot.clear();
         pressureHrBeforeSqiPlot.clear();
         pressureHrAfterSqiPlot.clear();
+        pressureWavePlot.clear();
         respirationPlot.clear();
         respirationWavePlot.clear();
         derivedSummaryText.setText("Stop a recording to compute pressure HR and magnetometer respiration.");
@@ -713,12 +714,16 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     private void renderAnalysis(DerivedAnalysis.AnalysisResult result) {
         pressureHrBeforeSqiPlot.clear();
         pressureHrAfterSqiPlot.clear();
+        pressureWavePlot.clear();
         respirationPlot.clear();
         respirationWavePlot.clear();
         int hrCount = 0;
         int hrAfterSqiCount = 0;
         int pressureAbove85Count = 0;
         int pressureLowSqiCount = 0;
+        final int above85Color = Color.rgb(220, 38, 38);
+        final int lowSqiColor = Color.rgb(217, 119, 6);
+        final float halfStep = (float) (0.5 * DerivedAnalysis.PRESSURE_STEP_S);
         for (DerivedAnalysis.HrWindow window : result.pressureHr) {
             if (finite(window.finalHrBpm)) {
                 pressureHrBeforeSqiPlot.add((float) window.centerS, (float) window.finalHrBpm);
@@ -727,10 +732,30 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
             if (finite(window.hrAfterSqiBpm)) {
                 pressureHrAfterSqiPlot.add((float) window.centerS, (float) window.hrAfterSqiBpm);
                 hrAfterSqiCount++;
+            } else if (finite(window.finalHrBpm)) {
+                int color = "unreliable_above_85_bpm".equals(window.pressureReliability)
+                        ? above85Color
+                        : lowSqiColor;
+                float center = (float) window.centerS;
+                float hr = (float) window.finalHrBpm;
+                pressureHrBeforeSqiPlot.addRegion(center - halfStep, center + halfStep, color);
+                pressureHrBeforeSqiPlot.addMarker(center, hr, color, PlotView.MARKER_CROSS);
+                pressureHrAfterSqiPlot.addRegion(center - halfStep, center + halfStep, color);
+                pressureHrAfterSqiPlot.addMarker(center, hr, color, PlotView.MARKER_CROSS);
             }
             if ("unreliable_above_85_bpm".equals(window.pressureReliability)) pressureAbove85Count++;
             if ("unreliable_low_sqi".equals(window.pressureReliability)) pressureLowSqiCount++;
         }
+
+        addDownsampled(pressureWavePlot, result.pressureWaveTime, result.pressureWave, 1200);
+        for (Double peakTime : result.pressurePeakTimes) {
+            double value = valueAt(result.pressureWaveTime, result.pressureWave, peakTime);
+            if (finite(value)) {
+                pressureWavePlot.addMarker(peakTime.floatValue(), (float) value,
+                        Color.rgb(2, 132, 199), PlotView.MARKER_CIRCLE);
+            }
+        }
+
         int respCount = 0;
         for (DerivedAnalysis.RespWindow window : result.respiration) {
             if (finite(window.respirationRateBpm)) {
@@ -739,14 +764,23 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
             }
         }
         addDownsampled(respirationWavePlot, result.respirationWaveTime, result.respirationWave, 1200);
+        for (Double peakTime : result.respirationPeakTimes) {
+            double value = valueAt(result.respirationWaveTime, result.respirationWave, peakTime);
+            if (finite(value)) {
+                respirationWavePlot.addMarker(peakTime.floatValue(), (float) value,
+                        Color.rgb(5, 150, 105), PlotView.MARKER_CIRCLE);
+            }
+        }
         derivedSummaryText.setText(String.format(Locale.US,
-                "%s\n%s\n\nPressure before SQI: %d windows\nPressure after SQI: %d reliable windows\nPressure unreliable above 85 bpm: %d windows\nPressure unreliable low SQI: %d windows\n\nNative fs estimate: pressure %.1f Hz, magnetometer %.1f Hz\nPressure coverage: %.0f%%\nExport will include raw phyphox-style files and derived CSVs.",
+                "%s\n%s\n\nSQI pass rule: score >= 0.35 and pressure HR <= 85 bpm. Amber = low SQI; red = above 85 bpm.\nPressure before SQI: %d windows\nPressure after SQI: %d reliable windows\nPressure unreliable above 85 bpm: %d windows\nPressure unreliable low SQI: %d windows\nPressure peak events shown: %d\nCounted breaths shown: %d\n\nNative fs estimate: pressure %.1f Hz, magnetometer %.1f Hz\nPressure coverage: %.0f%%\nExport includes raw phyphox-style files and derived CSVs.",
                 result.pressureMessage,
                 result.respirationMessage,
                 hrCount,
                 hrAfterSqiCount,
                 pressureAbove85Count,
                 pressureLowSqiCount,
+                result.pressurePeakTimes.size(),
+                result.respirationPeakTimes.size(),
                 result.pressureNativeFs,
                 result.magNativeFs,
                 100.0 * result.pressureCoverage));
@@ -770,6 +804,24 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         }
     }
 
+    private double valueAt(double[] t, double[] x, double target) {
+        if (t == null || x == null || t.length == 0 || x.length == 0) return Double.NaN;
+        int n = Math.min(t.length, x.length);
+        int low = 0;
+        int high = n - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            if (t[mid] < target) low = mid + 1;
+            else if (t[mid] > target) high = mid - 1;
+            else return x[mid];
+        }
+        if (low <= 0) return x[0];
+        if (low >= n) return x[n - 1];
+        double span = t[low] - t[low - 1];
+        double fraction = span > 0.0 ? (target - t[low - 1]) / span : 0.0;
+        return x[low - 1] + fraction * (x[low] - x[low - 1]);
+    }
+
     private void saveZip() {
         if (rows.isEmpty()) {
             Toast.makeText(this, "No samples to save", Toast.LENGTH_SHORT).show();
@@ -786,7 +838,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/zip");
-        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v72_" + id + "_" + stamp + ".zip");
+        intent.putExtra(Intent.EXTRA_TITLE, "phyphox_plus_v73_" + id + "_" + stamp + ".zip");
         startActivityForResult(intent, SAVE_ZIP_REQUEST);
     }
 
@@ -1177,16 +1229,49 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
     }
 
     public static class PlotView extends View {
+        public static final int MARKER_CIRCLE = 0;
+        public static final int MARKER_CROSS = 1;
         private static final int MAX_POINTS = 1200;
+
+        private static final class Marker {
+            final float time;
+            final float value;
+            final int color;
+            final int style;
+
+            Marker(float time, float value, int color, int style) {
+                this.time = time;
+                this.value = value;
+                this.color = color;
+                this.style = style;
+            }
+        }
+
+        private static final class Region {
+            final float start;
+            final float end;
+            final int color;
+
+            Region(float start, float end, int color) {
+                this.start = start;
+                this.end = end;
+                this.color = color;
+            }
+        }
+
         private final ArrayDeque<float[]> points = new ArrayDeque<>();
+        private final ArrayList<Marker> markers = new ArrayList<>();
+        private final ArrayList<Region> regions = new ArrayList<>();
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final String title;
         private final String yLabel;
         private float zoom = 1f;
+        private float maxConnectionGap = Float.POSITIVE_INFINITY;
         private boolean popupEnabled = true;
 
         public PlotView(Context context, String title, String yLabel, int color) {
@@ -1211,13 +1296,29 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
 
         public void clear() {
             points.clear();
+            markers.clear();
+            regions.clear();
             invalidate();
         }
 
-        public void add(float t, float value) {
-            points.add(new float[] {t, value});
+        public void add(float time, float value) {
+            points.add(new float[] {time, value});
             while (points.size() > MAX_POINTS) points.removeFirst();
             postInvalidateOnAnimation();
+        }
+
+        public void addMarker(float time, float value, int color, int style) {
+            markers.add(new Marker(time, value, color, style));
+            postInvalidateOnAnimation();
+        }
+
+        public void addRegion(float start, float end, int color) {
+            regions.add(new Region(Math.min(start, end), Math.max(start, end), color));
+            postInvalidateOnAnimation();
+        }
+
+        public void setMaxConnectionGap(float seconds) {
+            maxConnectionGap = seconds > 0f ? seconds : Float.POSITIVE_INFINITY;
         }
 
         private void showPopup() {
@@ -1231,7 +1332,10 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
             box.addView(label);
             PlotView big = new PlotView(getContext(), title, yLabel, linePaint.getColor());
             big.popupEnabled = false;
+            big.maxConnectionGap = maxConnectionGap;
             big.points.addAll(points);
+            big.markers.addAll(markers);
+            big.regions.addAll(regions);
             box.addView(big, new LinearLayout.LayoutParams(-1, 620));
             SeekBar seekBar = new SeekBar(getContext());
             seekBar.setMax(9);
@@ -1278,26 +1382,51 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
                 canvas.drawLine(left, y, right, y, gridPaint);
             }
             canvas.drawText(yLabel, 6f, top + 18f, textPaint);
-            if (points.size() < 2) {
+
+            boolean hasData = !points.isEmpty() || !markers.isEmpty();
+            if (!hasData) {
                 String xLabel = "Time (s)";
                 canvas.drawText(xLabel, (left + right - textPaint.measureText(xLabel)) / 2f, height - 10f, textPaint);
                 canvas.drawText("Waiting for samples...", left + 12f, top + 48f, textPaint);
                 return;
             }
-            float fullStart = points.peekFirst()[0];
-            float endT = points.peekLast()[0];
+
+            float fullStart = Float.POSITIVE_INFINITY;
+            float endT = Float.NEGATIVE_INFINITY;
+            for (float[] point : points) {
+                fullStart = Math.min(fullStart, point[0]);
+                endT = Math.max(endT, point[0]);
+            }
+            for (Marker marker : markers) {
+                fullStart = Math.min(fullStart, marker.time);
+                endT = Math.max(endT, marker.time);
+            }
+            for (Region region : regions) {
+                fullStart = Math.min(fullStart, region.start);
+                endT = Math.max(endT, region.end);
+            }
+            if (!Float.isFinite(fullStart) || !Float.isFinite(endT)) {
+                fullStart = 0f;
+                endT = 1f;
+            }
             if (endT <= fullStart) endT = fullStart + 1f;
             float span = (endT - fullStart) / Math.max(1f, zoom);
             float startT = endT - span;
+
             float min = Float.POSITIVE_INFINITY;
             float max = Float.NEGATIVE_INFINITY;
             for (float[] point : points) {
                 if (point[0] < startT) continue;
                 float value = point[1];
-                if (!Float.isNaN(value) && !Float.isInfinite(value)) {
+                if (Float.isFinite(value)) {
                     min = Math.min(min, value);
                     max = Math.max(max, value);
                 }
+            }
+            for (Marker marker : markers) {
+                if (marker.time < startT || !Float.isFinite(marker.value)) continue;
+                min = Math.min(min, marker.value);
+                max = Math.max(max, marker.value);
             }
             if (min == Float.POSITIVE_INFINITY) {
                 min = -1f;
@@ -1310,6 +1439,7 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
             float pad = 0.1f * (max - min);
             min -= pad;
             max += pad;
+
             canvas.drawText(String.format(Locale.US, "%.1f", max), 6f, top + 38f, textPaint);
             canvas.drawText(String.format(Locale.US, "%.1f", min), 6f, bottom, textPaint);
             String leftLabel = String.format(Locale.US, "%.1fs", startT);
@@ -1318,17 +1448,73 @@ public class HealthRecorderActivity extends Activity implements SensorEventListe
             canvas.drawText(leftLabel, left, height - 34f, textPaint);
             canvas.drawText(rightLabel, right - textPaint.measureText(rightLabel), height - 34f, textPaint);
             canvas.drawText(xLabel, (left + right - textPaint.measureText(xLabel)) / 2f, height - 10f, textPaint);
+
+            int checkpoint = canvas.save();
+            canvas.clipRect(left, top, right, bottom);
+            for (Region region : regions) {
+                if (region.end < startT || region.start > endT) continue;
+                float x1 = mapX(Math.max(region.start, startT), left, right, startT, endT);
+                float x2 = mapX(Math.min(region.end, endT), left, right, startT, endT);
+                overlayPaint.setStyle(Paint.Style.FILL);
+                overlayPaint.setColor(Color.argb(48, Color.red(region.color), Color.green(region.color), Color.blue(region.color)));
+                canvas.drawRect(x1, top, x2, bottom, overlayPaint);
+            }
+
             Float lastX = null;
             Float lastY = null;
+            Float lastTime = null;
             for (float[] point : points) {
                 if (point[0] < startT) continue;
-                if (Float.isNaN(point[1]) || Float.isInfinite(point[1])) continue;
-                float x = left + (right - left) * (point[0] - startT) / Math.max(1e-6f, endT - startT);
-                float y = bottom - (bottom - top) * (point[1] - min) / Math.max(1e-6f, max - min);
-                if (lastX != null) canvas.drawLine(lastX, lastY, x, y, linePaint);
+                if (!Float.isFinite(point[1])) {
+                    lastX = null;
+                    lastY = null;
+                    lastTime = null;
+                    continue;
+                }
+                float x = mapX(point[0], left, right, startT, endT);
+                float y = mapY(point[1], top, bottom, min, max);
+                if (lastX != null && lastTime != null && point[0] - lastTime <= maxConnectionGap) {
+                    canvas.drawLine(lastX, lastY, x, y, linePaint);
+                }
                 lastX = x;
                 lastY = y;
+                lastTime = point[0];
             }
+
+            for (Marker marker : markers) {
+                if (marker.time < startT || marker.time > endT || !Float.isFinite(marker.value)) continue;
+                float x = mapX(marker.time, left, right, startT, endT);
+                float y = mapY(marker.value, top, bottom, min, max);
+                if (marker.style == MARKER_CROSS) {
+                    drawCross(canvas, x, y, Color.WHITE, 9f);
+                    drawCross(canvas, x, y, marker.color, 5f);
+                } else {
+                    overlayPaint.setStyle(Paint.Style.FILL);
+                    overlayPaint.setColor(Color.WHITE);
+                    canvas.drawCircle(x, y, 10f, overlayPaint);
+                    overlayPaint.setColor(marker.color);
+                    canvas.drawCircle(x, y, 6f, overlayPaint);
+                }
+            }
+            canvas.restoreToCount(checkpoint);
+            canvas.drawRect(left, top, right, bottom, borderPaint);
+        }
+
+        private float mapX(float time, float left, float right, float startT, float endT) {
+            return left + (right - left) * (time - startT) / Math.max(1e-6f, endT - startT);
+        }
+
+        private float mapY(float value, float top, float bottom, float min, float max) {
+            return bottom - (bottom - top) * (value - min) / Math.max(1e-6f, max - min);
+        }
+
+        private void drawCross(Canvas canvas, float x, float y, int color, float strokeWidth) {
+            overlayPaint.setStyle(Paint.Style.STROKE);
+            overlayPaint.setStrokeWidth(strokeWidth);
+            overlayPaint.setColor(color);
+            float radius = 10f;
+            canvas.drawLine(x - radius, y - radius, x + radius, y + radius, overlayPaint);
+            canvas.drawLine(x - radius, y + radius, x + radius, y - radius, overlayPaint);
         }
     }
 }

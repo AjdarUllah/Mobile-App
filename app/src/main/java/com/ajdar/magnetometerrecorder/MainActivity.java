@@ -17,30 +17,21 @@ public class MainActivity extends Activity {
         int pad = dp(18);
         root.setPadding(pad, pad, pad, pad);
         TextView title = new TextView(this);
-        title.setText("Pressure MAG Recorder v7.2");
+        title.setText("Pressure MAG Recorder v7.3");
         title.setTextSize(28);
         root.addView(title);
         TextView body = new TextView(this);
-        body.setText("Version 7.2. Open the health recorder for pressure HR, SQI, and magnetometer respiration. The old v6 recorder is kept as a fallback.");
+        body.setText("Pressure HR with SQI window markers, pressure peak events, and counted magnetometer breaths.");
         body.setTextSize(16);
         body.setPadding(0, dp(12), 0, dp(12));
         root.addView(body);
         Button open = new Button(this);
-        open.setText("Open Health Recorder v7.2");
+        open.setText("Open Health Recorder v7.3");
         root.addView(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, HealthRecorderActivity.class));
-            }
-        });
-        Button old = new Button(this);
-        old.setText("Open old v6 Recorder");
-        root.addView(old);
-        old.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startActivity(new Intent(MainActivity.this, PlotV51Activity.class));
             }
         });
         setContentView(root);

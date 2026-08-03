@@ -122,6 +122,7 @@ public final class DerivedAnalysis {
         public final ArrayList<HrWindow> pressureHr = new ArrayList<>();
         public final ArrayList<RespWindow> respiration = new ArrayList<>();
         public final ArrayList<RespWindow> respirationMinuteBins = new ArrayList<>();
+        public final ArrayList<Double> pressurePeakTimes = new ArrayList<>();
         public final ArrayList<Double> respirationPeakTimes = new ArrayList<>();
         public double pressureMedianHrBpm = Double.NaN;
         public double respirationMedianBpm = Double.NaN;
@@ -130,6 +131,8 @@ public final class DerivedAnalysis {
         public double pressureCoverage = 0.0;
         public String pressureMessage = "Pressure HR not computed.";
         public String respirationMessage = "Respiration not computed.";
+        public double[] pressureWaveTime = new double[0];
+        public double[] pressureWave = new double[0];
         public double[] respirationWaveTime = new double[0];
         public double[] respirationWave = new double[0];
     }
@@ -153,6 +156,18 @@ public final class DerivedAnalysis {
         Estimate(double bpm, double confidence) {
             this.bpm = bpm;
             this.confidence = confidence;
+        }
+    }
+
+    private static final class PeakDetection {
+        final Estimate estimate;
+        final int[] peaks;
+        final boolean inverted;
+
+        PeakDetection(Estimate estimate, int[] peaks, boolean inverted) {
+            this.estimate = estimate;
+            this.peaks = peaks;
+            this.inverted = inverted;
         }
     }
 
@@ -183,6 +198,7 @@ public final class DerivedAnalysis {
                 robustZ(filtFiltBandpass(grid.x, PRESSURE_FS, 0.8, 5.0)),
                 robustZ(filtFiltBandpass(grid.x, PRESSURE_FS, 1.0, 5.0))
         };
+        addPressurePeakVisualization(grid, featureBank, result);
 
         ArrayList<Double> raw = new ArrayList<>();
         for (double center = grid.t[0] + 0.5 * PRESSURE_WINDOW_S;
@@ -451,6 +467,10 @@ public final class DerivedAnalysis {
     }
 
     private static Estimate peakHr(double[] segment, double fs) {
+        return peakDetection(segment, fs).estimate;
+    }
+
+    private static PeakDetection peakDetection(double[] segment, double fs) {
         double[] z = robustZ(segment);
         int minDistance = Math.max(1, (int) Math.round(0.38 * fs));
         int[] positive = detectPeaks(z, minDistance, 0.15);
@@ -459,7 +479,32 @@ public final class DerivedAnalysis {
         int[] negative = detectPeaks(neg, minDistance, 0.15);
         Estimate p = peaksToHr(positive, fs);
         Estimate n = peaksToHr(negative, fs);
-        return n.confidence > p.confidence ? n : p;
+        return n.confidence > p.confidence
+                ? new PeakDetection(n, negative, true)
+                : new PeakDetection(p, positive, false);
+    }
+
+    private static void addPressurePeakVisualization(Grid grid, double[][] featureBank, AnalysisResult result) {
+        PeakDetection best = null;
+        double[] bestFeature = null;
+        for (double[] feature : featureBank) {
+            PeakDetection candidate = peakDetection(feature, PRESSURE_FS);
+            if (best == null || candidate.estimate.confidence > best.estimate.confidence) {
+                best = candidate;
+                bestFeature = feature;
+            }
+        }
+        if (best == null || bestFeature == null) return;
+        result.pressureWaveTime = Arrays.copyOf(grid.t, grid.t.length);
+        result.pressureWave = Arrays.copyOf(bestFeature, bestFeature.length);
+        if (best.inverted) {
+            for (int i = 0; i < result.pressureWave.length; i++) {
+                result.pressureWave[i] = -result.pressureWave[i];
+            }
+        }
+        for (int peak : best.peaks) {
+            if (peak >= 0 && peak < grid.t.length) result.pressurePeakTimes.add(grid.t[peak]);
+        }
     }
 
     private static Estimate peaksToHr(int[] peaks, double fs) {
